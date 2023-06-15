@@ -34,6 +34,7 @@ async def run_subprocess(
 
 def make_requirements_hash(requirements: List[str]) -> str:
     """Makes a hash from a list of requirements."""
+    # TODO: Sort modules before hashing
     return hashlib.sha256("\n".join(requirements).encode("utf-8")).hexdigest()
 
 
