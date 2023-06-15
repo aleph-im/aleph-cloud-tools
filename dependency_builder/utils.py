@@ -3,20 +3,19 @@ import hashlib
 import logging
 import subprocess
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, NewType
 
+import aioipfs
 from aleph.sdk import AuthenticatedAlephClient
-from aleph.sdk.types import StorageEnum
 from aleph_message.models import StoreMessage
 from aleph_message.status import MessageStatus
 
-
-SOURCES_CHANNEL = "sources"
+Multiaddr = NewType("Multiaddr", str)
+CID = NewType("CID", str)
 
 
 async def run_subprocess(
-    cmd: str,
-    logger: logging.Logger = logging.getLogger(__name__)
+    cmd: str, logger: logging.Logger = logging.getLogger(__name__)
 ) -> (bytes, bytes, int):
     """Runs a subprocess and awaits its result."""
     proc = await asyncio.create_subprocess_exec(
@@ -39,27 +38,37 @@ def make_requirements_hash(requirements: List[str]) -> str:
 
 
 async def upload_sources(
-    session: AuthenticatedAlephClient,
     path: Path,
-    tags: Optional[List[str]] = None,
     logger: logging.Logger = logging.getLogger(__name__),
-) -> StoreMessage:
+) -> CID:
     """Uploads a file to IPFS and returns the StoreMessage."""
     logger.debug(f"Reading {path}...")
     with open(path, "rb") as fd:
         file_content = fd.read()
     logger.debug(f"Uploading {path} to IPFS...")
-    store_message, status = await session.create_store(
-        file_content=file_content,
-        storage_engine=StorageEnum.ipfs,
-        channel=SOURCES_CHANNEL,
-        guess_mime_type=True,
-        extra_fields={
-            "tags": tags,
-        } if tags else None,
-    )
-    if status in [MessageStatus.PENDING, MessageStatus.PROCESSED]:
-        logger.debug(f"{path} upload finished")
-        return store_message
+    cid = await upload_files_to_ipfs([path], logger=logger)
+    return cid
 
-    logger.error(f"{path} upload failed")
+
+def raise_no_cid():
+    raise ValueError("Could not obtain a CID")
+
+
+async def upload_files_to_ipfs(
+    files: list[Path],
+    multiaddr: Multiaddr = Multiaddr("/dns6/ipfs-2.aleph.im/tcp/443/https"),
+    logger: logging.Logger = logging.getLogger(__name__),
+) -> CID:
+    client = aioipfs.AsyncIPFS(maddr=multiaddr)
+
+    try:
+        cid = None
+        async for added_file in client.add(*files, recursive=True):
+            logger.debug(
+                f"Uploaded file {added_file['Name']} with CID: {added_file['Hash']}"
+            )
+            cid = added_file["Hash"]
+        # The last CID is the CID of the directory uploaded
+        return cid or raise_no_cid()
+    finally:
+        await client.close()
