@@ -4,6 +4,7 @@ and to dependency_builder the according immutable IPFS volume.
 """
 import logging
 from typing import List
+import toml
 
 from aleph.sdk.vm.app import AlephApp
 from fastapi import FastAPI, UploadFile, File
@@ -52,6 +53,28 @@ async def build_python3_9_requirements(
 ) -> CID:
     """Build a python 3.9 environment from a requirements.txt file."""
     # aleph_client = AuthenticatedAlephClient(get_fallback_account(), settings.API_HOST)
+    requirements = data_file.file.read().decode("utf-8").split("\n")
+    requirements = [r.strip() for r in requirements if r]
+    return await build_and_upload_requirements_python(requirements)
+
+
+@app.post("/build/python3.9/pyproject")
+async def build_python3_9_pyproject(
+    data_file: UploadFile = File(...),
+) -> CID:
+    """Build a python 3.9 environment from a pyproject.toml file."""
+    pyproject_text = data_file.file.read().decode("utf-8")
+    pyproject_data = toml.loads(pyproject_text)
+    requirements = pyproject_data["tool"]["poetry"]["dependencies"]
+    requirements = [f"{k}=={v}" for k, v in requirements.items()]
+    return await build_and_upload_requirements_python(requirements)
+
+
+@app.post("/build/python3.9/pipfile")
+async def build_python3_9_pipfile(
+    data_file: UploadFile = File(...),
+) -> CID:
+    """Build a python 3.9 environment from a Pipfile file."""
     requirements = data_file.file.read().decode("utf-8").split("\n")
     requirements = [r.strip() for r in requirements if r]
     return await build_and_upload_requirements_python(requirements)
