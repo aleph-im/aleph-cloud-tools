@@ -32,10 +32,10 @@ async def run_subprocess(
     return stdout, stderr, return_code
 
 
-def make_requirements_hash(requirements: List[str]) -> str:
+def make_dependencies_hash(dependencies: List[str]) -> str:
     """Makes a hash from a list of requirements."""
     # TODO: Sort modules before hashing
-    return hashlib.sha256("\n".join(requirements).encode("utf-8")).hexdigest()
+    return hashlib.sha256("\n".join(sorted(set(dependencies))).encode("utf-8")).hexdigest()
 
 
 async def upload_sources(

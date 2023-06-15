@@ -6,7 +6,7 @@ from typing import List
 from utils import (
     run_subprocess,
     upload_sources,
-    make_requirements_hash,
+    make_dependencies_hash,
     CID,
 )
 
@@ -24,11 +24,11 @@ async def build_and_upload_requirements_python(
         shutil.rmtree(opt_packages)
         opt_packages.mkdir(parents=True, exist_ok=True)
 
-    requirements_hash = make_requirements_hash(requirements)
+    dependencies_hash = make_dependencies_hash(requirements)
 
     mksquashfs_dir = Path(f"/opt/sqashfs/")
     mksquashfs_dir.mkdir(parents=True, exist_ok=True)
-    squashfs_path = mksquashfs_dir / Path(f"{requirements_hash}.squashfs")
+    squashfs_path = mksquashfs_dir / Path(f"{dependencies_hash}.squashfs")
     await run_subprocess(f"pip install -t {str(opt_packages)} {' '.join(requirements)}")
     await run_subprocess(f"mksquashfs {str(opt_packages)} {squashfs_path}")
     (_, cid) = await asyncio.gather(
@@ -52,11 +52,11 @@ async def build_and_upload_node_modules(
         shutil.rmtree(root_modules)
         root_modules.mkdir(parents=True, exist_ok=True)
 
-    modules_hash = make_requirements_hash(modules)
+    dependencies_hash = make_dependencies_hash(modules)
 
     mksquashfs_dir = Path("/opt/sqashfs/")
     mksquashfs_dir.mkdir(parents=True, exist_ok=True)
-    squashfs_path = mksquashfs_dir / Path(f"{modules_hash}.squashfs")
+    squashfs_path = mksquashfs_dir / Path(f"{dependencies_hash}.squashfs")
     await run_subprocess(f"npm install -g {' '.join(modules)}")
     await run_subprocess(f"mv /usr/local/lib/node_modules {str(root_modules)}")
     await run_subprocess(f"mksquashfs {str(root_modules)} {squashfs_path}")
