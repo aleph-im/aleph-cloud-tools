@@ -2,16 +2,21 @@
 This is the Aleph Console Backend VM. Its current primary purpose is to accept a list of python or node.js dependencies
 and to dependency_builder the according immutable IPFS volume.
 """
-import json
 import logging
+import time
+from pathlib import Path
 from typing import List
 
 from aleph.sdk.vm.app import AlephApp
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, File, UploadFile
 from starlette.middleware.cors import CORSMiddleware
 
-from build import build_and_upload_requirements_python, build_and_upload_node_modules
-from utils import CID
+from build import (build_and_upload_node_modules,
+                   build_and_upload_node_package,
+                   build_and_upload_python_pipfile,
+                   build_and_upload_python_pyproject,
+                   build_and_upload_python_requirements)
+from utils import CID, save_file
 
 logger = (
     logging.getLogger(__name__)
@@ -43,7 +48,7 @@ async def health() -> dict:
 @app.post("/build/python3.9")
 async def build_python3_9(requirements: List[str]) -> CID:
     """Build a python 3.9 environment."""
-    return await build_and_upload_requirements_python(requirements)
+    return await build_and_upload_python_requirements(requirements)
 
 
 @app.post("/build/python3.9/requirements")
@@ -53,7 +58,27 @@ async def build_python3_9_requirements(
     """Build a python 3.9 environment from a requirements.txt file."""
     requirements = data_file.file.read().decode("utf-8").split("\n")
     requirements = [r.strip() for r in requirements if r]
-    return await build_and_upload_requirements_python(requirements)
+    return await build_and_upload_python_requirements(requirements)
+
+
+@app.post("/build/python3.9/pipfile")
+async def build_python3_9_pipfile(
+    data_file: UploadFile = File(...),
+) -> CID:
+    """Build a python 3.9 environment from a Pipfile file."""
+    path = Path(f"/opt/{str(time.time())}/Pipfile")
+    await save_file(data_file, path)
+    return await build_and_upload_python_pipfile(path)
+
+
+@app.post("/build/python3.9/pyproject")
+async def build_python3_9_pyproject(
+    data_file: UploadFile = File(...),
+) -> CID:
+    """Build a python 3.9 environment from a pyproject.toml file."""
+    path = Path(f"/opt/{str(time.time())}/pyproject.toml")
+    await save_file(data_file, path)
+    return await build_and_upload_python_pyproject(path)
 
 
 @app.post("/build/nodejs")
@@ -67,6 +92,6 @@ async def build_nodejs_package(
     data_file: UploadFile = File(...),
 ) -> CID:
     """Build a node.js environment from a package.json file."""
-    modules = json.loads(data_file.file.read().decode("utf-8")).get("dependencies", [])
-    modules = [f"{m}@{v}" for m, v in modules.items()]
-    return await build_and_upload_node_modules(modules)
+    path = Path(f"/opt/{str(time.time())}/package.json")
+    await save_file(data_file, path)
+    return await build_and_upload_node_package(path)

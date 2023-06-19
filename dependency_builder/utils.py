@@ -1,14 +1,13 @@
 import asyncio
 import hashlib
 import logging
+import shutil
 import subprocess
 from pathlib import Path
-from typing import Optional, List, NewType
+from typing import List, NewType
 
 import aioipfs
-from aleph.sdk import AuthenticatedAlephClient
-from aleph_message.models import StoreMessage
-from aleph_message.status import MessageStatus
+from fastapi import HTTPException
 
 Multiaddr = NewType("Multiaddr", str)
 CID = NewType("CID", str)
@@ -16,26 +15,39 @@ CID = NewType("CID", str)
 
 async def run_subprocess(
     cmd: str, logger: logging.Logger = logging.getLogger(__name__)
-) -> (bytes, bytes, int):
+) -> (str, str, int):
     """Runs a subprocess and awaits its result."""
-    proc = await asyncio.create_subprocess_exec(
-        *cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    logger.debug("[COMMAND]", cmd)
+    proc = await asyncio.create_subprocess_shell(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
     )
     stdout, stderr = await proc.communicate()
     return_code = proc.returncode
+    stdout = stdout.decode("utf-8")
+    stderr = stderr.decode("utf-8")
     if return_code != 0:
         logger.error(
             f"Command {cmd} failed with return code {return_code}"
-            f"stdout: {stdout.decode('utf-8')}"
-            f"stderr: {stderr.decode('utf-8')}"
+            f"stdout: {stdout}"
+            f"stderr: {stderr}"
         )
+        raise subprocess.CalledProcessError(return_code, cmd, stderr)
+    logger.debug(
+        "\n[RETURN CODE]",
+        return_code,
+        "\n[STDOUT]",
+        stdout,
+        "\n[STDERR]",
+        stderr,
+    )
     return stdout, stderr, return_code
 
 
 def make_dependencies_hash(dependencies: List[str]) -> str:
     """Makes a hash from a list of requirements."""
-    # TODO: Sort modules before hashing
-    return hashlib.sha256("\n".join(sorted(set(dependencies))).encode("utf-8")).hexdigest()
+    return hashlib.sha256(
+        "\n".join(sorted(set(dependencies))).encode("utf-8")
+    ).hexdigest()
 
 
 async def upload_sources(
@@ -43,11 +55,14 @@ async def upload_sources(
     logger: logging.Logger = logging.getLogger(__name__),
 ) -> CID:
     """Uploads a file to IPFS and returns the StoreMessage."""
-    logger.debug(f"Reading {path}...")
-    with open(path, "rb") as fd:
-        file_content = fd.read()
     logger.debug(f"Uploading {path} to IPFS...")
-    cid = await upload_files_to_ipfs([path], logger=logger)
+    try:
+        cid = await upload_files_to_ipfs([path], logger=logger)
+    except Exception as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Could not upload {path} to IPFS: {e}",
+        )
     return cid
 
 
@@ -73,3 +88,9 @@ async def upload_files_to_ipfs(
         return cid or raise_no_cid()
     finally:
         await client.close()
+
+
+async def save_file(data_file, path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "wb") as buffer:
+        shutil.copyfileobj(data_file.file, buffer)

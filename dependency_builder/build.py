@@ -1,40 +1,112 @@
 import asyncio
 import shutil
+import subprocess
 from pathlib import Path
 from typing import List
 
-from utils import (
-    run_subprocess,
-    upload_sources,
-    make_dependencies_hash,
-    CID,
-)
+from fastapi import HTTPException
+
+from utils import CID, make_dependencies_hash, run_subprocess, upload_sources
+
+# /opt/packages is by default imported into Python Aleph VMs
+PACKAGES_PATH = Path("/opt/packages")
+
+# /opt/node_modules is by default imported into Node.js Aleph VMs
+MODULES_PATH = Path("/opt/node_modules")
 
 
-async def build_and_upload_requirements_python(
-    requirements: List[str],
-) -> CID:
-    opt_packages = Path(
-        "/opt/packages"
-    )  # /opt/packages is by default imported into Aleph VMs
+async def prepare_paths(dependencies_path: Path, dependencies_hash: str):
+    """Prepares the paths for the dependencies and returns the path to the squashfs file."""
     # check if directory exists, clean if necessary
-    if not opt_packages.exists():
-        opt_packages.mkdir(parents=True, exist_ok=True)
+    if not dependencies_path.exists():
+        dependencies_path.mkdir(parents=True, exist_ok=True)
     else:
-        shutil.rmtree(opt_packages)
-        opt_packages.mkdir(parents=True, exist_ok=True)
-
-    dependencies_hash = make_dependencies_hash(requirements)
-
-    mksquashfs_dir = Path(f"/opt/sqashfs/")
+        shutil.rmtree(dependencies_path)
+        dependencies_path.mkdir(parents=True, exist_ok=True)
+    mksquashfs_dir = Path("/opt/sqashfs/")
     mksquashfs_dir.mkdir(parents=True, exist_ok=True)
     squashfs_path = mksquashfs_dir / Path(f"{dependencies_hash}.squashfs")
-    await run_subprocess(f"pip install -t {str(opt_packages)} {' '.join(requirements)}")
-    await run_subprocess(f"mksquashfs {str(opt_packages)} {squashfs_path}")
+    return squashfs_path
+
+
+async def build_and_upload_python_requirements(
+    requirements: List[str],
+) -> CID:
+    dependencies_hash = make_dependencies_hash(requirements)
+    squashfs_path = await prepare_paths(PACKAGES_PATH, dependencies_hash)
+    try:
+        await run_subprocess(
+            f"pip install -t {str(PACKAGES_PATH)} {' '.join(requirements)}"
+        )
+    except subprocess.CalledProcessError as e:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unprocessable requirements: {e.stderr}",
+        )
+    await run_subprocess(f"mksquashfs {str(PACKAGES_PATH)} {squashfs_path}")
     (_, cid) = await asyncio.gather(
-        run_subprocess(f"rm -rf {str(opt_packages)}"),
+        run_subprocess(f"rm -rf {str(PACKAGES_PATH)}"),
         upload_sources(Path(squashfs_path)),
     )
+    await run_subprocess(f"rm -rf {squashfs_path}")
+    return cid
+
+
+async def build_and_upload_python_pipfile(
+    pipfile_path: Path,
+) -> CID:
+    with open(pipfile_path, "r") as fd:
+        pipfile = fd.read()
+    dependencies_hash = make_dependencies_hash(pipfile.split("\n"))
+    squashfs_path = await prepare_paths(PACKAGES_PATH, dependencies_hash)
+    try:
+        await run_subprocess(
+            f"cd {pipfile_path.parent} && pipenv lock && pipenv requirements > requirements.txt"
+        )
+    except subprocess.CalledProcessError as e:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unprocessable pipfile: {e.stderr}",
+        )
+    await run_subprocess(
+        f"pip install -t {str(PACKAGES_PATH)} -r {str(pipfile_path.parent / Path('requirements.txt'))}"
+    )
+    await run_subprocess(f"mksquashfs {str(PACKAGES_PATH)} {squashfs_path}")
+    (_, _, cid) = await asyncio.gather(
+        run_subprocess(f"rm -rf {str(pipfile_path.parent)}"),
+        run_subprocess(f"rm -rf {str(PACKAGES_PATH)}"),
+        upload_sources(Path(squashfs_path)),
+    )
+    await run_subprocess(f"rm -rf {squashfs_path}")
+    return cid
+
+
+async def build_and_upload_python_pyproject(
+    pyproject_path: Path,
+) -> CID:
+    with open(pyproject_path, "r") as fd:
+        pyproject = fd.read()
+    dependencies_hash = make_dependencies_hash(pyproject.split("\n"))
+    squashfs_path = await prepare_paths(PACKAGES_PATH, dependencies_hash)
+    try:
+        await run_subprocess(
+            f"cd {pyproject_path.parent} && poetry export -f requirements.txt -o requirements.txt --without-hashes"
+        )
+    except subprocess.CalledProcessError as e:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unprocessable pyproject.toml: {e.output}",
+        )
+    await run_subprocess(
+        f"pip install -t {str(PACKAGES_PATH)} -r {str(pyproject_path.parent / Path('requirements.txt'))}"
+    )
+    await run_subprocess(f"mksquashfs {str(PACKAGES_PATH)} {squashfs_path}")
+    (_, _, cid) = await asyncio.gather(
+        run_subprocess(f"rm -rf {str(pyproject_path.parent)}"),
+        run_subprocess(f"rm -rf {str(PACKAGES_PATH)}"),
+        upload_sources(Path(squashfs_path)),
+    )
+
     await run_subprocess(f"rm -rf {squashfs_path}")
     return cid
 
@@ -42,27 +114,45 @@ async def build_and_upload_requirements_python(
 async def build_and_upload_node_modules(
     modules: List[str],
 ) -> CID:
-    root_modules = Path(
-        "/opt/node_modules"
-    )  # /opt/node_modules is by default the NODE_PATH env on AlephVMs
-    # check if directory exists, clean if necessary
-    if not root_modules.exists():
-        root_modules.mkdir(parents=True, exist_ok=True)
-    else:
-        shutil.rmtree(root_modules)
-        root_modules.mkdir(parents=True, exist_ok=True)
-
     dependencies_hash = make_dependencies_hash(modules)
-
-    mksquashfs_dir = Path("/opt/sqashfs/")
-    mksquashfs_dir.mkdir(parents=True, exist_ok=True)
-    squashfs_path = mksquashfs_dir / Path(f"{dependencies_hash}.squashfs")
-    await run_subprocess(f"npm install -g {' '.join(modules)}")
-    await run_subprocess(f"mv /usr/local/lib/node_modules {str(root_modules)}")
-    await run_subprocess(f"mksquashfs {str(root_modules)} {squashfs_path}")
+    squashfs_path = await prepare_paths(MODULES_PATH, dependencies_hash)
+    try:
+        await run_subprocess(f"npm install -g {' '.join(modules)}")
+    except subprocess.CalledProcessError as e:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid packages: {e.output}",
+        )
+    await run_subprocess(f"mv /usr/local/lib/node_modules {str(MODULES_PATH)}")
+    await run_subprocess(f"mksquashfs {str(MODULES_PATH)} {squashfs_path}")
     (_, _, cid) = await asyncio.gather(
-        run_subprocess(f"rm -rf /usr/local/lib/node_modules"),
-        run_subprocess(f"rm -rf {str(root_modules)}"),
+        run_subprocess("rm -rf /usr/local/lib/node_modules"),
+        run_subprocess(f"rm -rf {str(MODULES_PATH)}"),
+        upload_sources(Path(squashfs_path)),
+    )
+    await run_subprocess(f"rm -rf {squashfs_path}")
+    return cid
+
+
+async def build_and_upload_node_package(
+    packages_path: Path,
+) -> CID:
+    with open(packages_path, "r") as fd:
+        packages = fd.read()
+    dependencies_hash = make_dependencies_hash(packages.split("\n"))
+    squashfs_path = await prepare_paths(MODULES_PATH, dependencies_hash)
+    await run_subprocess(f"mv {str(packages_path)} {str(MODULES_PATH)}")
+    try:
+        await run_subprocess(f"cd {str(MODULES_PATH)} && npm install")
+    except subprocess.CalledProcessError as e:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid package.json: {e.output}",
+        )
+    await run_subprocess(f"mksquashfs {str(MODULES_PATH)} {squashfs_path}")
+    (_, _, cid) = await asyncio.gather(
+        run_subprocess(f"rm -rf {str(MODULES_PATH)}"),
+        run_subprocess(f"rm -rf {str(packages_path.parent)}"),
         upload_sources(Path(squashfs_path)),
     )
     await run_subprocess(f"rm -rf {squashfs_path}")
