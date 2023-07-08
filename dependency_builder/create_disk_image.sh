@@ -48,7 +48,7 @@ pip3 install 'coincurve==15.0.0'
 which python3
 python3 -m compileall -f /usr/local/lib/python3.9
 
-pip3 install -t /opt/packages 'poetry~=1.5.1' 'pipenv~=2023.7.4' 'aleph-sdk-python==0.6.0' 'uvicorn[standard]~=0.22.0' 'aioipfs~=0.6.3'
+pip3 install -t /opt/packages 'poetry~=1.5.1' 'pipenv~=2023.7.3' 'aleph-sdk-python==0.6.0' 'uvicorn[standard]~=0.22.0' 'aioipfs~=0.6.3'
 
 echo "PubkeyAuthentication yes" >> /etc/ssh/sshd_config
 echo "PasswordAuthentication no" >> /etc/ssh/sshd_config

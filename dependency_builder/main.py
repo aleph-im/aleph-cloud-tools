@@ -12,10 +12,10 @@ from fastapi import FastAPI, File, UploadFile
 from starlette.middleware.cors import CORSMiddleware
 
 from build import (build_and_upload_node_modules,
-                   build_and_upload_node_package,
-                   build_and_upload_python_pipfile,
-                   build_and_upload_python_pyproject,
-                   build_and_upload_python_requirements)
+                    build_and_upload_node_package,
+                    build_and_upload_python_pipfile,
+                    build_and_upload_python_pyproject,
+                    build_and_upload_python_requirements)
 from utils import CID, save_file
 
 logger = (
@@ -53,7 +53,7 @@ async def build_python3_9(requirements: List[str]) -> CID:
 
 @app.post("/build/python3.9/requirements")
 async def build_python3_9_requirements(
-    data_file: UploadFile = File(...),
+        data_file: UploadFile = File(...),
 ) -> CID:
     """Build a python 3.9 environment from a requirements.txt file."""
     requirements = data_file.file.read().decode("utf-8").split("\n")
@@ -63,7 +63,7 @@ async def build_python3_9_requirements(
 
 @app.post("/build/python3.9/pipfile")
 async def build_python3_9_pipfile(
-    data_file: UploadFile = File(...),
+        data_file: UploadFile = File(...),
 ) -> CID:
     """Build a python 3.9 environment from a Pipfile file."""
     path = Path(f"/opt/{str(time.time())}/Pipfile")
@@ -73,7 +73,7 @@ async def build_python3_9_pipfile(
 
 @app.post("/build/python3.9/pyproject")
 async def build_python3_9_pyproject(
-    data_file: UploadFile = File(...),
+        data_file: UploadFile = File(...),
 ) -> CID:
     """Build a python 3.9 environment from a pyproject.toml file."""
     path = Path(f"/opt/{str(time.time())}/pyproject.toml")
@@ -89,7 +89,7 @@ async def build_nodejs(modules: List[str]) -> CID:
 
 @app.post("/build/nodejs/package")
 async def build_nodejs_package(
-    data_file: UploadFile = File(...),
+        data_file: UploadFile = File(...),
 ) -> CID:
     """Build a node.js environment from a package.json file."""
     path = Path(f"/opt/{str(time.time())}/package.json")
