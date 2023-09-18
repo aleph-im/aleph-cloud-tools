@@ -32,14 +32,7 @@ async def run_subprocess(
             f"stderr: {stderr}"
         )
         raise subprocess.CalledProcessError(return_code, cmd, stderr)
-    logger.debug(
-        "\n[RETURN CODE]",
-        return_code,
-        "\n[STDOUT]",
-        stdout,
-        "\n[STDERR]",
-        stderr,
-    )
+    logger.debug("[STDOUT]", stdout)
     return stdout, stderr, return_code
 
 
@@ -99,7 +92,7 @@ async def download_files_from_ipfs(
     client = aioipfs.AsyncIPFS(maddr=multiaddr)
     try:
         logger.debug(f"Downloading {cid} from IPFS...")
-        await client.getgen(cid, destination, archive=False)
+        await client.get(cid, destination, archive=False)
         logger.debug(f"Downloaded {cid} from IPFS to {destination}")
     finally:
         await client.close()

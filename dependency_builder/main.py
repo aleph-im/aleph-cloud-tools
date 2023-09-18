@@ -3,6 +3,7 @@ This is the Aleph Console Backend VM. Its current primary purpose is to accept a
 and to dependency_builder the according immutable IPFS volume.
 """
 import logging
+import os
 import time
 from pathlib import Path
 from typing import List
@@ -11,18 +12,24 @@ from aleph.sdk.vm.app import AlephApp
 from fastapi import FastAPI, File, UploadFile
 from starlette.middleware.cors import CORSMiddleware
 
-from .build import (build_and_upload_node_modules,
+from build import (build_and_upload_node_modules,
                     build_and_upload_node_package,
                     build_and_upload_python_pipfile,
                     build_and_upload_python_pyproject,
                     build_and_upload_python_requirements, build_and_upload_from_cid)
-from .utils import CID, save_file
+from utils import CID, save_file
 
 logger = (
     logging.getLogger(__name__)
     if __name__ != "__main__"
     else logging.getLogger("uvicorn")
 )
+# Get environment variables for logging (use defaults if not set)
+log_level = os.getenv("LOG_LEVEL", "INFO")
+
+# Configure the root logger
+logging.basicConfig(level=log_level)
+
 http_app = FastAPI()
 http_app.add_middleware(
     CORSMiddleware,
