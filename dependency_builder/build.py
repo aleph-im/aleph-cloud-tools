@@ -6,13 +6,16 @@ from typing import List
 
 from fastapi import HTTPException
 
-from utils import CID, make_dependencies_hash, run_subprocess, upload_sources
+from utils import CID, make_dependencies_hash, run_subprocess, upload_sources, download_files_from_ipfs
 
 # /opt/packages is by default imported into Python Aleph VMs
 PACKAGES_PATH = Path("/opt/packages")
 
 # /opt/node_modules is by default imported into Node.js Aleph VMs
 MODULES_PATH = Path("/opt/node_modules")
+
+# /opt/root is used for IPFS directories to be built into immutable volumes
+ROOT_PATH = Path("/opt/root")
 
 
 async def prepare_paths(dependencies_path: Path, dependencies_hash: str):
@@ -153,6 +156,19 @@ async def build_and_upload_node_package(
     (_, _, cid) = await asyncio.gather(
         run_subprocess(f"rm -rf {str(MODULES_PATH)}"),
         run_subprocess(f"rm -rf {str(packages_path.parent)}"),
+        upload_sources(Path(squashfs_path)),
+    )
+    await run_subprocess(f"rm -rf {squashfs_path}")
+    return cid
+
+
+async def build_and_upload_from_cid(cid: CID) -> CID:
+    dependencies_hash = make_dependencies_hash([cid])
+    squashfs_path = await prepare_paths(ROOT_PATH, dependencies_hash)
+    await download_files_from_ipfs(cid, ROOT_PATH)
+    await run_subprocess(f"mksquashfs {str(ROOT_PATH)} {squashfs_path}")
+    (_, cid) = await asyncio.gather(
+        run_subprocess(f"rm -rf {str(ROOT_PATH)}"),
         upload_sources(Path(squashfs_path)),
     )
     await run_subprocess(f"rm -rf {squashfs_path}")

@@ -90,6 +90,21 @@ async def upload_files_to_ipfs(
         await client.close()
 
 
+async def download_files_from_ipfs(
+    cid: CID,
+    destination: Path,
+    multiaddr: Multiaddr = Multiaddr("/dns6/ipfs-2.aleph.im/tcp/443/https"),
+    logger: logging.Logger = logging.getLogger(__name__),
+) -> None:
+    client = aioipfs.AsyncIPFS(maddr=multiaddr)
+    try:
+        logger.debug(f"Downloading {cid} from IPFS...")
+        await client.getgen(cid, destination, archive=False)
+        logger.debug(f"Downloaded {cid} from IPFS to {destination}")
+    finally:
+        await client.close()
+
+
 async def save_file(data_file, path):
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "wb") as buffer:

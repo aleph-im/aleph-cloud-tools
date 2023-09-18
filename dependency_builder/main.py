@@ -11,12 +11,12 @@ from aleph.sdk.vm.app import AlephApp
 from fastapi import FastAPI, File, UploadFile
 from starlette.middleware.cors import CORSMiddleware
 
-from build import (build_and_upload_node_modules,
+from .build import (build_and_upload_node_modules,
                     build_and_upload_node_package,
                     build_and_upload_python_pipfile,
                     build_and_upload_python_pyproject,
-                    build_and_upload_python_requirements)
-from utils import CID, save_file
+                    build_and_upload_python_requirements, build_and_upload_from_cid)
+from .utils import CID, save_file
 
 logger = (
     logging.getLogger(__name__)
@@ -95,3 +95,9 @@ async def build_nodejs_package(
     path = Path(f"/opt/{str(time.time())}/package.json")
     await save_file(data_file, path)
     return await build_and_upload_node_package(path)
+
+
+@app.post("/build/cid")
+async def build_squashfs(cid: CID) -> CID:
+    """Build a squashFS from a directory on IPFS using its CID."""
+    return await build_and_upload_from_cid(cid)
