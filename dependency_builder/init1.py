@@ -24,7 +24,8 @@ from enum import Enum
 from io import StringIO
 from os import system
 from shutil import make_archive
-from typing import Any, AsyncIterable, Dict, List, NewType, Optional, Tuple, Union
+from typing import (Any, AsyncIterable, Dict, List, NewType, Optional, Tuple,
+                    Union)
 
 import aiohttp
 import msgpack
@@ -330,15 +331,13 @@ async def make_request(session, scope):
 
 
 def show_loading():
-    body = {
-        "body": Path("/root/loading.html").read_text()
-    }
+    body = {"body": Path("/root/loading.html").read_text()}
     headers = {
         "headers": [
-            [b'Content-Type', b'text/html'],
-            [b'Connection', b'keep-alive'],
-            [b'Keep-Alive', b'timeout=5'],
-            [b'Transfer-Encoding', b'chunked']
+            [b"Content-Type", b"text/html"],
+            [b"Connection", b"keep-alive"],
+            [b"Keep-Alive", b"timeout=5"],
+            [b"Transfer-Encoding", b"chunked"],
         ],
         "status": 503,
     }

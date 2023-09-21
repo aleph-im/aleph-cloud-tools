@@ -90,7 +90,34 @@ async def upload_files_to_ipfs(
         await client.close()
 
 
+async def download_from_ipfs(
+    cid: CID,
+    destination: Path,
+    multiaddr: Multiaddr = Multiaddr("/dns6/dweb.link/tcp/443/https"),
+    logger: logging.Logger = logging.getLogger(__name__),
+) -> Path:
+    client = aioipfs.AsyncIPFS(maddr=multiaddr)
+    try:
+        logger.debug(f"Downloading {cid} from IPFS...")
+        await client.get(cid, destination)
+        logger.debug(f"Downloaded {cid} from IPFS to {destination}.")
+        return destination
+    finally:
+        await client.close()
+
+
 async def save_file(data_file, path):
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "wb") as buffer:
         shutil.copyfileobj(data_file.file, buffer)
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.DEBUG)
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(
+        download_from_ipfs(
+            CID("QmRg8nT2q7RHmLffGdw1PVDLt2rZeBkkLZVCAufyWAmWyu"), Path("test")
+        )
+    )
+    loop.close()
